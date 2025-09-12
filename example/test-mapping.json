@@ -1,0 +1,39 @@
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "user.name": {
+        "type": "keyword"
+      },
+      "user.email": {
+        "type": "keyword"
+      },
+      "host.ip": {
+        "type": "ip"
+      },
+      "event.category": {
+        "type": "keyword"
+      },
+      "event.action": {
+        "type": "keyword"
+      },
+      "process.name": {
+        "type": "keyword"
+      },
+      "process.pid": {
+        "type": "long"
+      },
+      "kibana.space.id": {
+        "type": "keyword"
+      },
+      "custom.field.name": {
+        "type": "text"
+      },
+      "vendor.specific.field": {
+        "type": "keyword"
+      }
+    }
+  }
+}

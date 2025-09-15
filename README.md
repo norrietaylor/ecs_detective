@@ -1,29 +1,17 @@
 # ECS Detective 🕵️
 
-A comprehensive tool to analyze Elastic Common Schema (ECS) field usage in TypeScript and JavaScript repositories. This detective tool scans through code files to identify and categorize field references as either core ECS fields or custom/vendor fields.
+A comprehensive tool to analyze Elastic Common Schema (ECS) field usage in TypeScript and JavaScript repositories. This detective tool scans through code files to identify and categorize field references as core ECS fields, vendor fields, or custom fields.
 
 ## Features
 
 - 🔍 **Comprehensive Scanning**: Analyzes JavaScript, TypeScript, JSON, YAML, and other file types
 - 🚀 **Deep TypeScript Analysis**: Advanced Elasticsearch client API introspection for TypeScript files
-- 📊 **Detailed Statistics**: Provides comprehensive usage statistics and rankings
+- 📊 **Three-Way Field Categorization**: Separates fields into core ECS, vendor-specific, and custom categories
 - 🎯 **ECS Field Detection**: Automatically downloads and parses core ECS field definitions
+- 📦 **Vendor Field Recognition**: Identifies known vendor fields (e.g., Tanium, Kibana, SentinelOne)
 - 🔧 **Configurable**: Flexible options for directories, field definitions, and output
-- 📈 **Rich Reporting**: Detailed console output and optional JSON export
+- 📈 **Rich Reporting**: Detailed console output and optional JSON export with separate vendor/custom breakdowns
 - 🔬 **ES Client API Parsing**: Detects field usage in search queries, aggregations, mappings, and bulk operations
-
-## Installation
-
-1. Clone this repository:
-```bash
-git clone <repository-url>
-cd kibana-ecs-analyzer
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
 
 ## Usage
 
@@ -46,6 +34,9 @@ npm start -- --include-tests
 # Use custom ECS fields file
 npm start -- --fields-csv ./my-ecs-fields.csv
 
+# Use custom vendor fields file
+npm start -- --vendor-fields ./my-vendor-fields.txt
+
 # Specify custom repository path  
 npm start -- --repo /path/to/your-repo
 
@@ -64,7 +55,11 @@ npm start -- --verbose
 | `-f, --fields-csv <path>` | Path to ECS fields CSV file | `fields.csv` |
 | `-r, --repo <path>` | Path to repository directory to analyze | `./repo` |
 | `-o, --output <path>` | Output file for results (JSON format) | Console only |
+| `--vendor-fields <path>` | Path to vendor fields file | `vendor_fields.txt` |
 | `--include-tests` | Include test directories in analysis | Excluded by default |
+| `--include-json` | Include JSON files in analysis | JS/TS only by default |
+| `--include-yaml` | Include YAML/YML files in analysis | JS/TS only by default |
+| `--include-markdown` | Include Markdown files in analysis | JS/TS only by default |
 | `--verbose` | Enable verbose logging | Disabled |
 
 ### Test Directory Exclusion
@@ -80,6 +75,39 @@ By default, ECS Detective excludes test-related directories and files to focus o
 
 Use `--include-tests` to analyze test code and verify ECS field usage in test fixtures, mocks, and test utilities.
 
+## Vendor Fields Support
+
+ECS Detective now supports three-way field categorization:
+
+### 🎯 **Core ECS Fields**
+Fields that are part of the official Elastic Common Schema specification.
+
+### 📦 **Vendor Fields** 
+Fields from known security vendors and platforms (e.g., Tanium, SentinelOne, Kibana-specific fields). These are defined in the `vendor_fields.txt` file.
+
+### 🔧 **Custom Fields**
+Everything else - your organization's custom field definitions.
+
+### Vendor Fields File Format
+
+The `vendor_fields.txt` file should contain one vendor field pattern per line:
+
+```text
+.tanium.reporting.model
+.tanium.reporting.computer_name
+.sentinel_one.agent.agent.id
+.kibana.stats.snapshot
+.winlog.logon.type
+resource.id
+```
+
+- Lines starting with `#` are treated as comments
+- Empty lines are ignored
+- Fields can be specified with or without leading dots
+- Supports prefix matching (e.g., `.tanium.` matches all Tanium fields)
+
+Use the `--vendor-fields` option to specify a custom vendor fields file location.
+
 ## Output
 
 The tool provides comprehensive statistics including:
@@ -87,7 +115,8 @@ The tool provides comprehensive statistics including:
 ### File Statistics
 - Total number of files parsed
 - Files containing only core ECS fields
-- Files containing custom/vendor fields
+- Files containing vendor fields
+- Files containing custom fields
 - **File type breakdown** (TypeScript, JavaScript, JSON, YAML, etc.)
 - **Skipped files list** with reasons (file type not supported, empty files, etc.)
 
@@ -96,10 +125,15 @@ The tool provides comprehensive statistics including:
 - Top core fields by usage count (descending order)
 - Total occurrences of core field references
 
-### Custom/Vendor Field Analysis
-- Total number of unique custom/vendor fields referenced
-- Top custom/vendor fields by usage count (descending order)
-- Total occurrences of custom/vendor field references
+### Vendor Field Analysis
+- Total number of unique vendor fields referenced
+- Top vendor fields by usage count (descending order)  
+- Total occurrences of vendor field references
+
+### Custom Field Analysis
+- Total number of unique custom fields referenced
+- Top custom fields by usage count (descending order)  
+- Total occurrences of custom field references
 
 ### Example Output
 
@@ -110,7 +144,8 @@ The tool provides comprehensive statistics including:
 📁 File Statistics:
 Total files parsed: 15,432
 Files with ONLY core ECS fields: 1,234
-Files with custom/vendor fields: 2,345
+Files with vendor fields: 789
+Files with custom fields: 1,556
 Files skipped: 23
 
 📂 File Types Analyzed:
@@ -138,12 +173,22 @@ Top 10 core fields by usage:
   5. event.category - 432 occurrences
   ...
 
-🔧 Custom/Vendor Field Usage:
-Total custom/vendor fields referenced: 89
+📦 Vendor Field Usage:
+Total vendor fields referenced: 45
 
-Top 10 custom/vendor fields by usage:
-  1. kibana.space.id - 234 occurrences
-  2. custom.field.name - 123 occurrences
+Top 10 vendor fields by usage:
+  1. sentinel_one.agent.agent.id - 234 occurrences
+  2. tanium.client.version - 123 occurrences
+  3. winlog.logon.type - 98 occurrences
+  4. kibana.space.id - 87 occurrences
+  5. resource.id - 76 occurrences
+
+🔧 Custom Field Usage:
+Total custom fields referenced: 44
+
+Top 10 custom fields by usage:
+  1. custom.organization.department - 345 occurrences
+  2. app.custom.session_id - 234 occurrences
   3. vendor.specific.field - 98 occurrences
   ...
 ```

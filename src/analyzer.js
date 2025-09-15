@@ -9,23 +9,32 @@ export class ECSAnalyzer {
   constructor(options = {}) {
     this.repoPath = options.repoPath || './repo';
     this.fieldsCSV = options.fieldsCSV || 'fields.csv';
+    this.vendorFieldsFile = options.vendorFieldsFile || 'vendor_fields.txt';
     this.targetDirectories = options.targetDirectories || [];
     this.includeTests = options.includeTests || false;
+    this.includeJson = options.includeJson || false;
+    this.includeYaml = options.includeYaml || false;
+    this.includeMarkdown = options.includeMarkdown || false;
     this.verbose = options.verbose || false;
 
     this.fetcher = new ECSFetcher({ verbose: this.verbose });
     this.parser = new FieldParser({ verbose: this.verbose });
     this.scanner = new FileScanner({ 
       verbose: this.verbose,
-      includeTests: this.includeTests
+      includeTests: this.includeTests,
+      includeJson: this.includeJson,
+      includeYaml: this.includeYaml,
+      includeMarkdown: this.includeMarkdown
     });
 
     // Statistics tracking
     this.stats = {
       totalFiles: 0,
       filesWithOnlyCoreFields: 0,
+      filesWithVendorFields: 0,
       filesWithCustomFields: 0,
       coreFieldCounts: new Map(),
+      vendorFieldCounts: new Map(),
       customFieldCounts: new Map(),
       processedFiles: 0,
       skippedFiles: 0,
@@ -48,6 +57,11 @@ export class ECSAnalyzer {
         throw new Error('No core ECS fields found in CSV file');
       }
 
+      // Step 1.5: Load vendor fields
+      console.log(chalk.cyan('📦 Loading vendor field definitions...'));
+      const vendorFields = await this.loadVendorFields();
+      console.log(chalk.green(`✅ Loaded ${vendorFields.size} vendor field patterns`));
+
       // Step 2: Scan repository for files
       console.log(chalk.cyan('\n🔍 Step 2: Scanning repository files...'));
       const filePaths = await this.scanner.scanDirectory(this.repoPath, this.targetDirectories);
@@ -68,7 +82,7 @@ export class ECSAnalyzer {
           console.log(chalk.gray(`  📄 Processing: ${percentage}% (${progress}/${filePaths.length})`));
         }
 
-        await this.analyzeFile(filePath, coreFields);
+        await this.analyzeFile(filePath, coreFields, vendorFields);
       }
 
       // Step 4: Generate results
@@ -84,7 +98,7 @@ export class ECSAnalyzer {
     }
   }
 
-  async analyzeFile(filePath, coreFields) {
+  async analyzeFile(filePath, coreFields, vendorFields) {
     try {
       // Skip files that should be ignored
       if (this.scanner.shouldSkipFile(filePath)) {
@@ -120,17 +134,17 @@ export class ECSAnalyzer {
         return;
       }
 
-      // Categorize fields as core vs custom
-      const { coreFieldsInFile, customFieldsInFile } = this.categorizeFields(extractedFields, coreFields);
+      // Categorize fields as core vs vendor vs custom
+      const { coreFieldsInFile, vendorFieldsInFile, customFieldsInFile } = this.categorizeFields(extractedFields, coreFields, vendorFields);
 
       // Update statistics
-      this.updateFileStatistics(coreFieldsInFile, customFieldsInFile);
-      this.updateFieldCounts(coreFieldsInFile, customFieldsInFile);
+      this.updateFileStatistics(coreFieldsInFile, vendorFieldsInFile, customFieldsInFile);
+      this.updateFieldCounts(coreFieldsInFile, vendorFieldsInFile, customFieldsInFile);
 
       this.stats.processedFiles++;
 
-      if (this.verbose && (coreFieldsInFile.length > 0 || customFieldsInFile.length > 0)) {
-        console.log(chalk.gray(`    📁 ${path.relative(this.repoPath, filePath)}: ${coreFieldsInFile.length} core, ${customFieldsInFile.length} custom`));
+      if (this.verbose && (coreFieldsInFile.length > 0 || vendorFieldsInFile.length > 0 || customFieldsInFile.length > 0)) {
+        console.log(chalk.gray(`    📁 ${path.relative(this.repoPath, filePath)}: ${coreFieldsInFile.length} core, ${vendorFieldsInFile.length} vendor, ${customFieldsInFile.length} custom`));
       }
 
     } catch (error) {
@@ -141,8 +155,9 @@ export class ECSAnalyzer {
     }
   }
 
-  categorizeFields(extractedFields, coreFields) {
+  categorizeFields(extractedFields, coreFields, vendorFields) {
     const coreFieldsInFile = [];
+    const vendorFieldsInFile = [];
     const customFieldsInFile = [];
 
     for (const field of extractedFields) {
@@ -154,21 +169,28 @@ export class ECSAnalyzer {
         const normalizedField = this.normalizeFieldName(field, coreFields);
         if (normalizedField && coreFields.has(normalizedField)) {
           coreFieldsInFile.push(field);  // Keep original field name but classify as core
+        } else if (this.isVendorField(field, vendorFields)) {
+          vendorFieldsInFile.push(field);
         } else {
           customFieldsInFile.push(field);
         }
       }
     }
 
-    return { coreFieldsInFile, customFieldsInFile };
+    return { coreFieldsInFile, vendorFieldsInFile, customFieldsInFile };
   }
 
-  updateFileStatistics(coreFieldsInFile, customFieldsInFile) {
+  updateFileStatistics(coreFieldsInFile, vendorFieldsInFile, customFieldsInFile) {
     const hasCore = coreFieldsInFile.length > 0;
+    const hasVendor = vendorFieldsInFile.length > 0;
     const hasCustom = customFieldsInFile.length > 0;
 
-    if (hasCore && !hasCustom) {
+    if (hasCore && !hasVendor && !hasCustom) {
       this.stats.filesWithOnlyCoreFields++;
+    }
+
+    if (hasVendor) {
+      this.stats.filesWithVendorFields++;
     }
 
     if (hasCustom) {
@@ -176,11 +198,17 @@ export class ECSAnalyzer {
     }
   }
 
-  updateFieldCounts(coreFieldsInFile, customFieldsInFile) {
+  updateFieldCounts(coreFieldsInFile, vendorFieldsInFile, customFieldsInFile) {
     // Count core field occurrences
     for (const field of coreFieldsInFile) {
       const count = this.stats.coreFieldCounts.get(field) || 0;
       this.stats.coreFieldCounts.set(field, count + 1);
+    }
+
+    // Count vendor field occurrences
+    for (const field of vendorFieldsInFile) {
+      const count = this.stats.vendorFieldCounts.get(field) || 0;
+      this.stats.vendorFieldCounts.set(field, count + 1);
     }
 
     // Count custom field occurrences
@@ -196,6 +224,10 @@ export class ECSAnalyzer {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
+    const sortedVendorFields = Array.from(this.stats.vendorFieldCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
     const sortedCustomFields = Array.from(this.stats.customFieldCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
@@ -204,6 +236,7 @@ export class ECSAnalyzer {
       // File statistics
       totalFiles: this.stats.totalFiles,
       filesWithOnlyCoreFields: this.stats.filesWithOnlyCoreFields,
+      filesWithVendorFields: this.stats.filesWithVendorFields,
       filesWithCustomFields: this.stats.filesWithCustomFields,
       processedFiles: this.stats.processedFiles,
       skippedFiles: this.stats.skippedFiles,
@@ -215,7 +248,12 @@ export class ECSAnalyzer {
       topCoreFields: sortedCoreFields,
       totalCoreFieldOccurrences: Array.from(this.stats.coreFieldCounts.values()).reduce((a, b) => a + b, 0),
 
-      // Custom/vendor field statistics
+      // Vendor field statistics
+      totalVendorFieldsReferenced: this.stats.vendorFieldCounts.size,
+      topVendorFields: sortedVendorFields,
+      totalVendorFieldOccurrences: Array.from(this.stats.vendorFieldCounts.values()).reduce((a, b) => a + b, 0),
+
+      // Custom field statistics
       totalCustomFieldsReferenced: this.stats.customFieldCounts.size,
       topCustomFields: sortedCustomFields,
       totalCustomFieldOccurrences: Array.from(this.stats.customFieldCounts.values()).reduce((a, b) => a + b, 0),
@@ -234,8 +272,10 @@ export class ECSAnalyzer {
         summary: {
           totalFiles: results.totalFiles,
           filesWithOnlyCoreFields: results.filesWithOnlyCoreFields,
+          filesWithVendorFields: results.filesWithVendorFields,
           filesWithCustomFields: results.filesWithCustomFields,
           totalCoreFieldsReferenced: results.totalCoreFieldsReferenced,
+          totalVendorFieldsReferenced: results.totalVendorFieldsReferenced,
           totalCustomFieldsReferenced: results.totalCustomFieldsReferenced,
           analysisDate: results.analysisDate
         },
@@ -243,6 +283,11 @@ export class ECSAnalyzer {
           total: results.totalCoreFieldsReferenced,
           totalOccurrences: results.totalCoreFieldOccurrences,
           topFields: results.topCoreFields
+        },
+        vendorFields: {
+          total: results.totalVendorFieldsReferenced,
+          totalOccurrences: results.totalVendorFieldOccurrences,
+          topFields: results.topVendorFields
         },
         customFields: {
           total: results.totalCustomFieldsReferenced,
@@ -273,6 +318,68 @@ export class ECSAnalyzer {
    * @returns {string|null} - Normalized field name if it maps to a core field, null otherwise
    */
   normalizeFieldName(fieldName, coreFieldsSet) {
+    // Handle Kibana alert fields: kibana.alert.* -> check for corresponding core ECS fields
+    if (fieldName.startsWith('kibana.alert.')) {
+      // Remove kibana.alert. prefix and check if it's a core field
+      const withoutPrefix = fieldName.replace(/^kibana\.alert\./, '');
+      if (coreFieldsSet.has(withoutPrefix)) {
+        return withoutPrefix;
+      }
+
+      // Handle kibana.alert.original_event.* -> event.*
+      const originalEventMatch = withoutPrefix.match(/^original_event\.(.+)$/);
+      if (originalEventMatch) {
+        const eventField = `event.${originalEventMatch[1]}`;
+        if (coreFieldsSet.has(eventField)) {
+          return eventField;
+        }
+      }
+
+      // Check for common ECS patterns for the field without prefix
+      // Try adding common ECS namespaces like event.*, log.*, etc.
+      const commonNamespaces = ['event', 'log', 'user', 'host', 'process', 'source', 'destination'];
+      for (const namespace of commonNamespaces) {
+        const namespacedField = `${namespace}.${withoutPrefix}`;
+        if (coreFieldsSet.has(namespacedField)) {
+          return namespacedField;
+        }
+      }
+
+      // Handle kibana.alert.rule.* -> try without rule prefix
+      const ruleMatch = withoutPrefix.match(/^rule\.(.+)$/);
+      if (ruleMatch) {
+        const withoutRule = ruleMatch[1];
+        if (coreFieldsSet.has(withoutRule)) {
+          return withoutRule;
+        }
+        
+        // Also try common namespaces for rule fields
+        for (const namespace of commonNamespaces) {
+          const namespacedRuleField = `${namespace}.${withoutRule}`;
+          if (coreFieldsSet.has(namespacedRuleField)) {
+            return namespacedRuleField;
+          }
+        }
+      }
+
+      // Handle nested kibana.alert.rule.parameters.* -> try without rule.parameters prefix
+      const parametersMatch = withoutPrefix.match(/^rule\.parameters\.(.+)$/);
+      if (parametersMatch) {
+        const withoutParameters = parametersMatch[1];
+        if (coreFieldsSet.has(withoutParameters)) {
+          return withoutParameters;
+        }
+        
+        // Also try common namespaces for parameter fields
+        for (const namespace of commonNamespaces) {
+          const namespacedParamField = `${namespace}.${withoutParameters}`;
+          if (coreFieldsSet.has(namespacedParamField)) {
+            return namespacedParamField;
+          }
+        }
+      }
+    }
+
     // Handle complex mapping definitions with nested fields:
     // mappings.properties.host.properties.os.properties.name.fields.text.type -> host.os.name
     const complexMappingMatch = fieldName.match(/^mappings\.properties\.(.+?)(?:\.fields\..*)?$/);
@@ -322,5 +429,67 @@ export class ECSAnalyzer {
     }
 
     return null;
+  }
+
+  async loadVendorFields() {
+    try {
+      const vendorFields = new Set();
+      
+      if (!(await fs.pathExists(this.vendorFieldsFile))) {
+        if (this.verbose) {
+          console.log(chalk.yellow(`⚠️  Vendor fields file not found: ${this.vendorFieldsFile}`));
+        }
+        return vendorFields;
+      }
+
+      const content = await fs.readFile(this.vendorFieldsFile, 'utf8');
+      const lines = content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#')); // Filter out empty lines and comments
+
+      for (const line of lines) {
+        vendorFields.add(line);
+      }
+
+      return vendorFields;
+    } catch (error) {
+      if (this.verbose) {
+        console.log(chalk.yellow(`⚠️  Error loading vendor fields: ${error.message}`));
+      }
+      return new Set();
+    }
+  }
+
+  isVendorField(fieldName, vendorFields) {
+    if (!fieldName || !vendorFields || vendorFields.size === 0) {
+      return false;
+    }
+
+    // Direct match
+    if (vendorFields.has(fieldName)) {
+      return true;
+    }
+
+    // Check with leading dot (some vendor fields might be stored with leading dots)
+    const withDot = fieldName.startsWith('.') ? fieldName : `.${fieldName}`;
+    const withoutDot = fieldName.startsWith('.') ? fieldName.substring(1) : fieldName;
+    
+    if (vendorFields.has(withDot) || vendorFields.has(withoutDot)) {
+      return true;
+    }
+
+    // Check for pattern matches (prefix matching)
+    for (const vendorPattern of vendorFields) {
+      // Remove leading dot for comparison if present
+      const pattern = vendorPattern.startsWith('.') ? vendorPattern.substring(1) : vendorPattern;
+      const field = fieldName.startsWith('.') ? fieldName.substring(1) : fieldName;
+      
+      // Check if field starts with vendor pattern
+      if (field.startsWith(pattern)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

@@ -7,6 +7,10 @@ export class FileScanner {
   constructor(options = {}) {
     this.verbose = options.verbose || false;
     this.includeTests = options.includeTests || false;
+    this.includeJson = options.includeJson || false;
+    this.includeYaml = options.includeYaml || false;
+    this.includeMarkdown = options.includeMarkdown || false;
+    
     // Base exclude patterns for common build artifacts
     this.baseExcludePatterns = [
       '**/node_modules/**',
@@ -35,22 +39,56 @@ export class FileScanner {
       ? this.baseExcludePatterns 
       : [...this.baseExcludePatterns, ...this.testExcludePatterns];
     
-    this.includePatterns = [
+    // Build include patterns based on enabled file types
+    this.includePatterns = this.buildIncludePatterns();
+  }
+
+  buildIncludePatterns() {
+    // JavaScript and TypeScript files are always included (default behavior)
+    const patterns = [
       '**/*.js',
       '**/*.ts',
       '**/*.tsx',
-      '**/*.jsx',
-      '**/*.json',
-      '**/*.yml',
-      '**/*.yaml',
-      '**/*.md'
+      '**/*.jsx'
     ];
+
+    // Add other file types only if explicitly enabled
+    if (this.includeJson) {
+      patterns.push('**/*.json');
+    }
+
+    if (this.includeYaml) {
+      patterns.push('**/*.yml', '**/*.yaml');
+    }
+
+    if (this.includeMarkdown) {
+      patterns.push('**/*.md');
+    }
+
+    return patterns;
+  }
+
+  logEnabledFileTypes() {
+    const enabledTypes = ['JavaScript/TypeScript (default)'];
+    
+    if (this.includeJson) {
+      enabledTypes.push('JSON');
+    }
+    if (this.includeYaml) {
+      enabledTypes.push('YAML');
+    }
+    if (this.includeMarkdown) {
+      enabledTypes.push('Markdown');
+    }
+    
+    console.log(chalk.gray(`📄 File types enabled: ${enabledTypes.join(', ')}`));
   }
 
   async scanDirectory(repoPath, targetDirectories = []) {
     try {
       if (this.verbose) {
         console.log(chalk.blue(`🔍 Scanning repository: ${repoPath}`));
+        this.logEnabledFileTypes();
       }
 
       // Validate repository path

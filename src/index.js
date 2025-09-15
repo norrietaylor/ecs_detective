@@ -23,6 +23,10 @@ program
   .option('-r, --repo <path>', 'Path to repository directory to analyze', './repo')
   .option('-o, --output <path>', 'Output file for results (optional)')
   .option('--include-tests', 'Include test directories in analysis (excluded by default)', false)
+  .option('--include-json', 'Include JSON files in analysis (excluded by default)', false)
+  .option('--include-yaml', 'Include YAML/YML files in analysis (excluded by default)', false)
+  .option('--include-markdown', 'Include Markdown files in analysis (excluded by default)', false)
+  .option('--vendor-fields <path>', 'Path to vendor fields file', 'vendor_fields.txt')
   .option('--verbose', 'Enable verbose logging')
   .action(async (options) => {
     try {
@@ -43,8 +47,12 @@ program
       const analyzer = new ECSAnalyzer({
         repoPath: options.repo,
         fieldsCSV: options.fieldsCsv,
+        vendorFieldsFile: options.vendorFields,
         targetDirectories: options.directories ? options.directories.split(',').map(d => d.trim()) : [],
         includeTests: options.includeTests,
+        includeJson: options.includeJson,
+        includeYaml: options.includeYaml,
+        includeMarkdown: options.includeMarkdown,
         verbose: options.verbose
       });
 
@@ -78,7 +86,8 @@ function displayResults(results) {
   console.log(`\n${chalk.cyan('📁 File Statistics:')}`);
   console.log(`Total files parsed: ${chalk.bold(results.totalFiles)}`);
   console.log(`Files with ONLY core ECS fields: ${chalk.bold(results.filesWithOnlyCoreFields)}`);
-  console.log(`Files with custom/vendor fields: ${chalk.bold(results.filesWithCustomFields)}`);
+  console.log(`Files with vendor fields: ${chalk.bold(results.filesWithVendorFields)}`);
+  console.log(`Files with custom fields: ${chalk.bold(results.filesWithCustomFields)}`);
   console.log(`Files skipped: ${chalk.bold(results.skippedFiles)}`);
   
   console.log(`\n${chalk.cyan('📂 File Types Analyzed:')}`);
@@ -113,9 +122,16 @@ function displayResults(results) {
     console.log(`  ${index + 1}. ${chalk.green(field.name)} - ${chalk.bold(field.count)} occurrences`);
   });
   
-  console.log(`\n${chalk.cyan('🔧 Custom/Vendor Field Usage:')}`);
-  console.log(`Total custom/vendor fields referenced: ${chalk.bold(results.totalCustomFieldsReferenced)}`);
-  console.log(`\nTop 10 custom/vendor fields by usage:`);
+  console.log(`\n${chalk.cyan('📦 Vendor Field Usage:')}`);
+  console.log(`Total vendor fields referenced: ${chalk.bold(results.totalVendorFieldsReferenced)}`);
+  console.log(`\nTop 10 vendor fields by usage:`);
+  results.topVendorFields.slice(0, 10).forEach((field, index) => {
+    console.log(`  ${index + 1}. ${chalk.magenta(field.name)} - ${chalk.bold(field.count)} occurrences`);
+  });
+  
+  console.log(`\n${chalk.cyan('🔧 Custom Field Usage:')}`);
+  console.log(`Total custom fields referenced: ${chalk.bold(results.totalCustomFieldsReferenced)}`);
+  console.log(`\nTop 10 custom fields by usage:`);
   results.topCustomFields.slice(0, 10).forEach((field, index) => {
     console.log(`  ${index + 1}. ${chalk.yellow(field.name)} - ${chalk.bold(field.count)} occurrences`);
   });
@@ -135,3 +151,4 @@ function getFileTypeIcon(type) {
 }
 
 program.parse();
+

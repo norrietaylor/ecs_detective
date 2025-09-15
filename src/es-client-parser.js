@@ -552,10 +552,56 @@ export class ESClientParser {
     }
 
     // ECS field validation - allow both simple names and dot-notation
-    return /^[a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
+    const isValidFormat = /^[a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
            fieldName.length > 1 &&
            !fieldName.includes('..') && // No double dots
            !fieldName.startsWith('.') && // No leading dots
            !fieldName.endsWith('.'); // No trailing dots
+    
+    // Also check that it's not a common API pattern
+    return isValidFormat && !this.isCommonAPIPattern(fieldName);
+  }
+
+  isCommonAPIPattern(fieldName) {
+    if (!fieldName || typeof fieldName !== 'string') {
+      return false;
+    }
+
+    // Common API patterns that should be excluded
+    const apiPatterns = [
+      // Kibana/Express routing patterns
+      /^router\./i,
+      /^app\./i,
+      /^request\./i,
+      /^response\./i,
+      /^res\./i,
+      /^req\./i,
+      
+      // Framework patterns
+      /^React\./i,
+      /^Vue\./i,
+      /^Angular\./i,
+      /^jQuery\./i,
+      /^_\./i,  // Lodash
+      
+      // Common object methods
+      /^Object\./i,
+      /^Array\./i,
+      /^String\./i,
+      /^Number\./i,
+      /^Date\./i,
+      /^Math\./i,
+      /^JSON\./i,
+      
+      // Test frameworks
+      /^jest\./i,
+      /^expect\./i,
+      /^describe\./i,
+      /^it\./i,
+      /^test\./i,
+      
+    ];
+
+    return apiPatterns.some(pattern => pattern.test(fieldName));
   }
 }

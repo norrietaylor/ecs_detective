@@ -103,24 +103,23 @@ export class FieldParser {
   }
 
   extractFromJavaScript(content, fields, filePath) {
-    // For TypeScript files, use enhanced ES client analysis
-    const isTypeScript = filePath && (filePath.endsWith('.ts') || filePath.endsWith('.tsx'));
+    // Use ES client analysis for ALL JavaScript and TypeScript files
+    const esClientFields = this.esClientParser.extractESClientFields(content, filePath);
+    esClientFields.forEach(field => {
+      if (this.isValidESFieldName(field)) {
+        fields.add(field);
+      }
+    });
     
+    // For TypeScript files, also extract from ES document interfaces
+    const isTypeScript = filePath && (filePath.endsWith('.ts') || filePath.endsWith('.tsx'));
     if (isTypeScript) {
-      // Deep TypeScript analysis with ES client API introspection
-      const esClientFields = this.esClientParser.extractESClientFields(content, filePath);
-      esClientFields.forEach(field => {
-        if (this.isValidESFieldName(field)) {
-          fields.add(field);
-        }
-      });
-      
       // Extract from TypeScript interfaces and types ONLY if they look like ES document types
       this.extractFromESDocumentInterfaces(content, fields);
     }
 
-    // ONLY extract fields from Elasticsearch-specific contexts
-    this.extractFromESContexts(content, fields);
+    // ONLY extract fields from explicit Elasticsearch contexts (no broad pattern matching)
+    this.extractFromExplicitESContexts(content, fields);
   }
 
   extractFromESDocumentInterfaces(content, fields) {
@@ -141,8 +140,9 @@ export class FieldParser {
     }
   }
 
-  extractFromESContexts(content, fields) {
-    // Only extract fields from clear Elasticsearch contexts
+  extractFromExplicitESContexts(content, fields) {
+    // ONLY extract fields from explicit, unambiguous Elasticsearch contexts
+    // Removed overly broad patterns that catch general JavaScript property access
     const esContextPatterns = [
       // ES query contexts: { term: { 'field.name': value } }
       /\bterm\s*:\s*\{\s*['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']\s*:/g,
@@ -161,18 +161,17 @@ export class FieldParser {
       // ES exists query: { exists: { field: 'field.name' } }
       /\bexists\s*:\s*\{\s*field\s*:\s*['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']/g,
       // ES mapping contexts: 'field.name': { type: 'keyword' }
-      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']\s*:\s*\{\s*[^}]*type\s*:/g,
-      // Quoted field names in object properties: field: 'field.name'
-      /['"']([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']/g,
-      // Unquoted field references that look like ES document fields (dot notation)
-      /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']\s*:\s*\{\s*[^}]*(?:type|properties)\s*:/g
+      // REMOVED: Overly broad patterns that match general JavaScript property access
+      // REMOVED: /['"']([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)['"']/g
+      // REMOVED: /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
     ];
 
     for (const pattern of esContextPatterns) {
       let match;
       while ((match = pattern.exec(content)) !== null) {
         const fieldName = match[1];
-        if (this.isValidESFieldName(fieldName)) {
+        if (this.isValidESFieldName(fieldName) && !this.isCommonAPIPattern(fieldName)) {
           fields.add(fieldName);
         }
       }
@@ -505,6 +504,73 @@ export class FieldParser {
     }
 
     return true;
+  }
+
+  isCommonAPIPattern(fieldName) {
+    if (!fieldName || typeof fieldName !== 'string') {
+      return false;
+    }
+
+    // Common API patterns that should be excluded
+    const apiPatterns = [
+      // Kibana/Express routing patterns
+      /^router\./i,
+      /^app\./i,
+      /^request\./i,
+      /^response\./i,
+      /^res\./i,
+      /^req\./i,
+      
+      // Console and logging
+      /^console\./i,
+      /^logger\./i,
+      /^log\./i,
+      
+      // Node.js/JavaScript built-ins
+      /^process\./i,
+      /^module\./i,
+      /^require\./i,
+      /^global\./i,
+      /^window\./i,
+      /^document\./i,
+      
+      // Framework patterns
+      /^React\./i,
+      /^Vue\./i,
+      /^Angular\./i,
+      /^jQuery\./i,
+      /^_\./i,  // Lodash
+      
+      // Common object methods
+      /^Object\./i,
+      /^Array\./i,
+      /^String\./i,
+      /^Number\./i,
+      /^Date\./i,
+      /^Math\./i,
+      /^JSON\./i,
+      
+      // Test frameworks
+      /^jest\./i,
+      /^expect\./i,
+      /^describe\./i,
+      /^it\./i,
+      /^test\./i,
+      
+      // Configuration and options
+      /^config\./i,
+      /^options\./i,
+      /^settings\./i,
+      /^params\./i,
+      
+      // HTTP and networking
+      /^http\./i,
+      /^https\./i,
+      /^fetch\./i,
+      /^axios\./i
+    ];
+
+    return apiPatterns.some(pattern => pattern.test(fieldName));
   }
 
   isValidECSFieldName(fieldName) {

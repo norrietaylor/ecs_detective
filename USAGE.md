@@ -20,6 +20,12 @@ npm start -- --directories "src/plugins,x-pack/plugins"
 # Use a custom repository path
 npm start -- --repo /path/to/kibana
 
+# Use custom vendor fields file
+npm start -- --vendor-fields ./my-vendor-fields.txt
+
+# Include additional file types
+npm start -- --include-json --include-yaml --include-markdown
+
 # Save results to a file
 npm start -- --output analysis-results.json
 

@@ -21,6 +21,7 @@ logs
 # Output and temporary files
 results.json
 fields.csv
+vendor_fields.txt
 output/
 temp/
 

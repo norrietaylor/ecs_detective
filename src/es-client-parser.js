@@ -405,7 +405,7 @@ export class ESClientParser {
     const urlPatterns = [
       /^https?:\/\//i,                           // HTTP URLs
       /^ftp:\/\//i,                             // FTP URLs
-      /\.(com|org|net|edu|gov|mil|co|io|ly|me|ai|dev)$/i, // Common TLDs
+      /^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|co|io|ly|me|ai|dev)$/i, // Full domain names (no dots before domain)
       /^www\./i,                                // www prefixes
       /github\.com/i,                           // Common domains
       /elastic\.co/i,
@@ -449,8 +449,10 @@ export class ESClientParser {
     }
 
     // Exclude Windows executables and DLLs (these are process names, not field names)
+    // Note: Only exclude bare executable names, not field paths ending with these extensions
     const windowsExecutablePatterns = [
-      /\.(exe|dll|bat|cmd|msi|scr)$/i,          // Windows executables and libraries
+      /^[^.]*\.(exe|dll|bat|msi|scr)$/i,        // Only bare filenames with these extensions (no dots before extension)
+      /^cmd$/i,                                 // Bare 'cmd' without extension
       /^(rundll32|regsvr32|svchost|explorer|winlogon|csrss|lsass|spoolsv|services|smss|wininit|dwm|taskhost|dllhost|msiexec|setup|install)\.exe$/i,
       /^(ntdll|kernel32|user32|gdi32|advapi32|ole32|shell32|comctl32|msvcrt|ws2_32)\.dll$/i
     ];

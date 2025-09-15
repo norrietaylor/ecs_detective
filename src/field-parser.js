@@ -118,8 +118,16 @@ export class FieldParser {
       this.extractFromESDocumentInterfaces(content, fields);
     }
 
-    // ONLY extract fields from explicit Elasticsearch contexts (no broad pattern matching)
+    // Extract fields from explicit Elasticsearch contexts
     this.extractFromExplicitESContexts(content, fields);
+    
+    // Also extract general field patterns (quoted strings and property access)
+    const generalPatterns = [
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
+      /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
+    ];
+    
+    this.extractWithPatterns(content, fields, generalPatterns);
   }
 
   extractFromESDocumentInterfaces(content, fields) {
@@ -191,8 +199,8 @@ export class FieldParser {
   extractFromYAML(content, fields) {
     // Simple YAML field extraction - look for key: value patterns
     const patterns = [
-      /^[\s]*([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\s*:/gm,
-      /['"']([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g
+      /^[\s]*([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\s*:/gm,
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g
     ];
 
     this.extractWithPatterns(content, fields, patterns);
@@ -201,7 +209,7 @@ export class FieldParser {
   extractFromText(content, fields) {
     // General text patterns for field-like strings
     const patterns = [
-      /['"']([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
       /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
     ];
 
@@ -321,7 +329,7 @@ export class FieldParser {
 
     // Basic validation for field names - allow both simple names and dot-notation
     // ECS fields can be simple like "message" or complex like "user.name"
-    // Note: @ is not allowed at the start for field extraction
+    // Note: @ and leading dots are not allowed in basic validation
     const isValid = /^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
                    fieldName.length > 1; // Minimum length
 
@@ -330,8 +338,29 @@ export class FieldParser {
     return isValid && (fieldName.includes('.') || fieldName.length > 2);
   }
 
+  // Separate validation for extracted field names that allows vendor fields
+  isValidExtractedFieldName(fieldName) {
+    if (!fieldName || typeof fieldName !== 'string') {
+      return false;
+    }
+
+    // Extended validation for extracted fields - allows vendor fields starting with dots
+    // and special ECS fields starting with @
+    const isValid = /^[@.]?[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
+                   fieldName.length > 1; // Minimum length
+
+    // For extraction purposes, we're particularly interested in dot-notation fields
+    // but we'll also accept simple field names that are longer than 2 characters
+    return isValid && (fieldName.includes('.') || fieldName.length > 2);
+  }
+
   isValidESFieldName(fieldName) {
-    if (!this.isValidFieldName(fieldName)) {
+    // Special case for @timestamp - it's a valid ECS field
+    if (fieldName === '@timestamp') {
+      return true;
+    }
+    
+    if (!this.isValidExtractedFieldName(fieldName)) {
       return false;
     }
 
@@ -357,7 +386,7 @@ export class FieldParser {
     const urlPatterns = [
       /^https?:\/\//i,                           // HTTP URLs
       /^ftp:\/\//i,                             // FTP URLs
-      /\.(com|org|net|edu|gov|mil|co|io|ly|me|ai|dev)$/i, // Common TLDs
+      /^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|co|io|ly|me|ai|dev)$/i, // Full domain names (no dots before domain)
       /^www\./i,                                // www prefixes
       /github\.com/i,                           // Common domains
       /elastic\.co/i,
@@ -392,8 +421,8 @@ export class FieldParser {
       /^i\.e$/i,                                // "i.e" abbreviation
       /^etc$/i,                                 // "etc" abbreviation
       /^vs$/i,                                  // "vs" abbreviation
-      /^cmd\.exe$/i,                            // Windows command
-      /^powershell\.exe$/i                      // PowerShell executable
+      /^cmd\.exe$/i,                            // Windows command (bare executable name only)
+      /^powershell\.exe$/i                      // PowerShell executable (bare executable name only)
     ];
 
     if (textPatterns.some(pattern => pattern.test(fieldName))) {
@@ -401,8 +430,10 @@ export class FieldParser {
     }
 
     // Exclude Windows executables and DLLs (these are process names, not field names)
+    // Note: Only exclude bare executable names, not field paths ending with these extensions
     const windowsExecutablePatterns = [
-      /\.(exe|dll|bat|cmd|msi|scr)$/i,          // Windows executables and libraries
+      /^[^.]*\.(exe|dll|bat|msi|scr)$/i,        // Only bare filenames with these extensions (no dots before extension)
+      /^cmd$/i,                                 // Bare 'cmd' without extension
       /^(rundll32|regsvr32|svchost|explorer|winlogon|csrss|lsass|spoolsv|services|smss|wininit|dwm|taskhost|dllhost|msiexec|setup|install)\.exe$/i,
       /^(ntdll|kernel32|user32|gdi32|advapi32|ole32|shell32|comctl32|msvcrt|ws2_32)\.dll$/i
     ];

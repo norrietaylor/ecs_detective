@@ -16,13 +16,11 @@ export function isCommonAPIPattern(fieldName) {
     /^res\./i,
     /^req\./i,
 
-    // Console and logging
+    // Console (allow ECS log.* namespace)
     /^console\./i,
     /^logger\./i,
-    /^log\./i,
 
-    // Node.js/JavaScript built-ins
-    /^process\./i,
+    // Node.js/JavaScript built-ins (allow ECS process.* namespace)
     /^module\./i,
     /^require\./i,
     /^global\./i,

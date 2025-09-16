@@ -83,16 +83,61 @@ jobs:
         echo '```' >> coverage_report.md
         echo "" >> coverage_report.md
         
+        # Add threshold status
+        COVERAGE_THRESHOLD=75
+        COVERAGE_INT=${COVERAGE%.*}
+        if [ "$COVERAGE_INT" -lt "$COVERAGE_THRESHOLD" ]; then
+          echo "### ⚠️ Coverage Warning" >> coverage_report.md
+          echo "> **Coverage $COVERAGE% is below the required threshold of $COVERAGE_THRESHOLD%**" >> coverage_report.md
+          echo "" >> coverage_report.md
+        elif [ "$COVERAGE_INT" -lt 85 ]; then
+          echo "### ⚡ Coverage Notice" >> coverage_report.md
+          echo "> Coverage $COVERAGE% is above threshold ($COVERAGE_THRESHOLD%) but could be improved" >> coverage_report.md
+          echo "" >> coverage_report.md
+        fi
+        
         echo "### 📈 Summary" >> coverage_report.md
-        echo "| Metric | Value |" >> coverage_report.md
-        echo "|--------|-------|" >> coverage_report.md
-        echo "| **Tests Passed** | $TESTS_PASSED/$TESTS_TOTAL |" >> coverage_report.md
-        echo "| **Line Coverage** | $COVERAGE% |" >> coverage_report.md
-        echo "| **Node.js Version** | ${{ matrix.node-version }} |" >> coverage_report.md
+        echo "| Metric | Value | Status |" >> coverage_report.md
+        echo "|--------|-------|--------|" >> coverage_report.md
+        echo "| **Tests Passed** | $TESTS_PASSED/$TESTS_TOTAL | $(if [ "$TESTS_PASSED" = "$TESTS_TOTAL" ]; then echo "✅"; else echo "❌"; fi) |" >> coverage_report.md
+        
+        # Coverage status
+        if [ "$COVERAGE_INT" -ge "$COVERAGE_THRESHOLD" ]; then
+          COVERAGE_STATUS="✅"
+        else
+          COVERAGE_STATUS="❌"
+        fi
+        echo "| **Line Coverage** | $COVERAGE% | $COVERAGE_STATUS |" >> coverage_report.md
+        echo "| **Coverage Threshold** | $COVERAGE_THRESHOLD% | Required |" >> coverage_report.md
+        echo "| **Node.js Version** | ${{ matrix.node-version }} | - |" >> coverage_report.md
         
         # Add GitHub Actions summary
         echo "## 🧪 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
         cat coverage_report.md >> $GITHUB_STEP_SUMMARY
+        
+    - name: Check coverage threshold
+      run: |
+        COVERAGE_THRESHOLD=75
+        COVERAGE_INT=${COVERAGE%.*}  # Remove decimal part for comparison
+        
+        echo "📊 Coverage Analysis:"
+        echo "  Current Coverage: $COVERAGE%"
+        echo "  Required Threshold: $COVERAGE_THRESHOLD%"
+        echo ""
+        
+        if [ "$COVERAGE_INT" -lt "$COVERAGE_THRESHOLD" ]; then
+          echo "❌ COVERAGE FAILURE: Coverage $COVERAGE% is below required threshold of $COVERAGE_THRESHOLD%"
+          echo ""
+          echo "🔧 To fix this issue:"
+          echo "  1. Add more test cases to increase coverage"
+          echo "  2. Focus on uncovered lines shown in the coverage report"
+          echo "  3. Remove unused code that cannot be covered"
+          echo ""
+          echo "::error title=Coverage Below Threshold::Coverage $COVERAGE% is below required $COVERAGE_THRESHOLD%"
+          exit 1
+        else
+          echo "✅ COVERAGE SUCCESS: Coverage $COVERAGE% meets the required threshold of $COVERAGE_THRESHOLD%"
+        fi
         
     - name: Comment PR with coverage
       if: github.event_name == 'pull_request' && matrix.node-version == '20.x'

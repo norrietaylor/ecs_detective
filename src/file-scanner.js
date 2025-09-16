@@ -195,9 +195,13 @@ export class FileScanner {
     const fileName = path.basename(filePath);
     const fileExt = path.extname(filePath).toLowerCase();
     
-    // Skip certain file types
-    const skipExtensions = ['.map', '.min.js', '.bundle.js', '.d.ts'];
+    // Skip certain file types and known minified/bundled artifacts
+    const skipExtensions = ['.map', '.d.ts'];
     if (skipExtensions.includes(fileExt)) {
+      return true;
+    }
+    const lowerFileName = fileName.toLowerCase();
+    if (lowerFileName.endsWith('.min.js') || lowerFileName.endsWith('.bundle.js')) {
       return true;
     }
 

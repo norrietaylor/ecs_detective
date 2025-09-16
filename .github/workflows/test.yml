@@ -45,9 +45,12 @@ jobs:
         COVERAGE=$(grep "all files" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk -F'|' '{print $2}' | awk '{print $1}' | tr -d ' ')
         echo "COVERAGE_PERCENT=$COVERAGE" >> $GITHUB_ENV
         
-        # Create coverage report for PR comment
-        TESTS_PASSED=$(grep "ℹ pass" coverage_output.txt | awk '{print $3}')
-        TESTS_TOTAL=$(grep "ℹ tests" coverage_output.txt | awk '{print $3}')
+        # Create coverage report for PR comment (strip ANSI color codes from test parsing too)
+        TESTS_PASSED=$(grep "ℹ pass" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $3}' || echo "0")
+        TESTS_TOTAL=$(grep "ℹ tests" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $3}' || echo "0")
+        
+        # Debug output
+        echo "Debug: TESTS_PASSED='$TESTS_PASSED', TESTS_TOTAL='$TESTS_TOTAL'"
         
         # Determine coverage badge color (using integer comparison)
         COVERAGE_INT=${COVERAGE%.*}  # Remove decimal part
@@ -65,12 +68,21 @@ jobs:
         
         echo "## 🧪 Test Coverage Report" > coverage_report.md
         echo "" >> coverage_report.md
-        echo "![Coverage](https://img.shields.io/badge/Coverage-${COVERAGE}%25-${BADGE_COLOR}?style=flat-square) ![Tests](https://img.shields.io/badge/Tests-${TESTS_PASSED}%2F${TESTS_TOTAL}-brightgreen?style=flat-square) ![Node.js](https://img.shields.io/badge/Node.js-${{ matrix.node-version }}-blue?style=flat-square)" >> coverage_report.md
+        # Create test badge with fallback
+        if [ -n "$TESTS_PASSED" ] && [ -n "$TESTS_TOTAL" ]; then
+          TEST_BADGE="![Tests](https://img.shields.io/badge/Tests-${TESTS_PASSED}%2F${TESTS_TOTAL}-brightgreen?style=flat-square)"
+        else
+          TEST_BADGE="![Tests](https://img.shields.io/badge/Tests-Parse%20Error-red?style=flat-square)"
+        fi
+        
+        echo "![Coverage](https://img.shields.io/badge/Coverage-${COVERAGE}%25-${BADGE_COLOR}?style=flat-square) $TEST_BADGE ![Node.js](https://img.shields.io/badge/Node.js-${{ matrix.node-version }}-blue?style=flat-square)" >> coverage_report.md
         echo "" >> coverage_report.md
         
         # Add status indicators
-        if [ "$TESTS_PASSED" = "$TESTS_TOTAL" ]; then
+        if [ -n "$TESTS_PASSED" ] && [ -n "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" = "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" != "0" ]; then
           echo "### ✅ All Tests Passing!" >> coverage_report.md
+        elif [ -z "$TESTS_PASSED" ] || [ -z "$TESTS_TOTAL" ]; then
+          echo "### ⚠️ Test Results Could Not Be Parsed" >> coverage_report.md
         else
           echo "### ❌ Some Tests Failing" >> coverage_report.md
         fi
@@ -99,7 +111,13 @@ jobs:
         echo "### 📈 Summary" >> coverage_report.md
         echo "| Metric | Value | Status |" >> coverage_report.md
         echo "|--------|-------|--------|" >> coverage_report.md
-        echo "| **Tests Passed** | $TESTS_PASSED/$TESTS_TOTAL | $(if [ "$TESTS_PASSED" = "$TESTS_TOTAL" ]; then echo "✅"; else echo "❌"; fi) |" >> coverage_report.md
+        
+        # Ensure test values are not empty
+        if [ -z "$TESTS_PASSED" ] || [ -z "$TESTS_TOTAL" ]; then
+          echo "| **Tests Passed** | Unable to parse | ⚠️ |" >> coverage_report.md
+        else
+          echo "| **Tests Passed** | $TESTS_PASSED/$TESTS_TOTAL | $(if [ "$TESTS_PASSED" = "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" != "0" ]; then echo "✅"; else echo "❌"; fi) |" >> coverage_report.md
+        fi
         
         # Coverage status
         if [ "$COVERAGE_INT" -ge "$COVERAGE_THRESHOLD" ]; then

@@ -298,13 +298,8 @@ export class ESClientParser {
     // Extract fields from bulk operation bodies
     this.extractFieldsFromDocumentBody(bulkContent, fields);
     
-    // Also look for index/update operations
-    const actionPattern = /"(index|create|update)"\s*:\s*\{[^}]*"_index"\s*:\s*['"']([^'"']+)['"']/g;
-    let match;
-    while ((match = actionPattern.exec(bulkContent)) !== null) {
-      // Extract any field-like patterns from the bulk operations
-      this.extractFromQueryDSL(bulkContent, fields);
-    }
+    // Scan the bulk block once for Query DSL-like field references
+    this.extractFromQueryDSL(bulkContent, fields);
   }
 
   extractFieldsFromTypescriptInterfaces(content, fields) {

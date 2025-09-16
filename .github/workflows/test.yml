@@ -1,10 +1,13 @@
-name: Run Tests
+name: CI
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -27,9 +30,6 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Create coverage directory
-      run: mkdir -p coverage
-      
     - name: Run tests with coverage
       run: npm run test:coverage:file
       
@@ -48,7 +48,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results-node-${{ matrix.node-version }}
-        path: |
-          test-results.xml
-          coverage/
+        path: coverage/
         retention-days: 30

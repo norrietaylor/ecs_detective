@@ -7,6 +7,9 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test src/**/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage src/**/*.test.js",
+    "test:coverage:file": "node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info src/**/*.test.js",
+    "test:coverage:html": "npm run test:coverage && npx genhtml coverage/lcov.info --output-directory coverage/html",
     "dev": "node --watch src/index.js"
   },
   "dependencies": {

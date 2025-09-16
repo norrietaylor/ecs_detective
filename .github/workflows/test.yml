@@ -1,0 +1,250 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests with coverage
+      run: |
+        npm run test:coverage | tee coverage_output.txt
+        
+    - name: Extract coverage data
+      run: |
+        # Extract coverage table (strip ANSI color codes)
+        grep -A 20 "start of coverage report" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | grep -E "(file|src|all files|\-\-\-\-)" | head -10 > coverage_table.txt || echo "No coverage table found"
+        
+        # Extract overall coverage percentage (strip ANSI color codes)
+        COVERAGE=$(grep "all files" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk -F'|' '{print $2}' | awk '{print $1}' | tr -d ' ')
+        echo "COVERAGE_PERCENT=$COVERAGE" >> $GITHUB_ENV
+        
+        # Debug: Show what we're working with
+        echo "=== DEBUGGING TEST PARSING ==="
+        echo "Looking for test info in coverage_output.txt:"
+        echo "File exists: $(test -f coverage_output.txt && echo 'YES' || echo 'NO')"
+        echo "File size: $(wc -c coverage_output.txt 2>/dev/null || echo 'ERROR')"
+        echo ""
+        echo "Lines containing 'pass':"
+        grep -n "pass" coverage_output.txt || echo "No lines with 'pass' found"
+        echo ""
+        echo "Lines containing 'tests':"
+        grep -n "tests" coverage_output.txt || echo "No lines with 'tests' found"
+        echo ""
+        echo "Lines containing 'ℹ':"
+        grep -n "ℹ" coverage_output.txt || echo "No lines with 'ℹ' found"
+        echo ""
+        echo "Last 10 lines of output:"
+        tail -10 coverage_output.txt
+        echo "=== END DEBUG ==="
+        
+        # Try multiple parsing approaches
+        # Approach 1: Original
+        TESTS_PASSED_1=$(grep "ℹ pass" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $3}' || echo "")
+        TESTS_TOTAL_1=$(grep "ℹ tests" coverage_output.txt | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $3}' || echo "")
+        
+        # Approach 2: More flexible pattern
+        TESTS_PASSED_2=$(grep "pass" coverage_output.txt | grep -E "[0-9]+" | sed 's/\x1b\[[0-9;]*m//g' | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) print $i}' | tail -1 || echo "")
+        TESTS_TOTAL_2=$(grep "tests" coverage_output.txt | grep -E "[0-9]+" | sed 's/\x1b\[[0-9;]*m//g' | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) print $i}' | tail -1 || echo "")
+        
+        # Use the first successful approach
+        if [ -n "$TESTS_PASSED_1" ] && [ -n "$TESTS_TOTAL_1" ]; then
+          TESTS_PASSED="$TESTS_PASSED_1"
+          TESTS_TOTAL="$TESTS_TOTAL_1"
+          echo "Using approach 1: $TESTS_PASSED/$TESTS_TOTAL"
+        elif [ -n "$TESTS_PASSED_2" ] && [ -n "$TESTS_TOTAL_2" ]; then
+          TESTS_PASSED="$TESTS_PASSED_2"
+          TESTS_TOTAL="$TESTS_TOTAL_2"
+          echo "Using approach 2: $TESTS_PASSED/$TESTS_TOTAL"
+        else
+          TESTS_PASSED=""
+          TESTS_TOTAL=""
+          echo "All parsing approaches failed"
+        fi
+        
+        # Debug output
+        echo "Final result: TESTS_PASSED='$TESTS_PASSED', TESTS_TOTAL='$TESTS_TOTAL'"
+        
+        # Determine coverage badge color (using integer comparison)
+        COVERAGE_INT=${COVERAGE%.*}  # Remove decimal part
+        if [ "$COVERAGE_INT" -ge 90 ]; then
+          BADGE_COLOR="brightgreen"
+        elif [ "$COVERAGE_INT" -ge 80 ]; then
+          BADGE_COLOR="green"
+        elif [ "$COVERAGE_INT" -ge 70 ]; then
+          BADGE_COLOR="yellow"
+        elif [ "$COVERAGE_INT" -ge 60 ]; then
+          BADGE_COLOR="orange"
+        else
+          BADGE_COLOR="red"
+        fi
+        
+        echo "## 🧪 Test Coverage Report" > coverage_report.md
+        echo "" >> coverage_report.md
+        # Create test badge with fallback
+        if [ -n "$TESTS_PASSED" ] && [ -n "$TESTS_TOTAL" ]; then
+          TEST_BADGE="![Tests](https://img.shields.io/badge/Tests-${TESTS_PASSED}%2F${TESTS_TOTAL}-brightgreen?style=flat-square)"
+        else
+          TEST_BADGE="![Tests](https://img.shields.io/badge/Tests-Parse%20Error-red?style=flat-square)"
+        fi
+        
+        echo "![Coverage](https://img.shields.io/badge/Coverage-${COVERAGE}%25-${BADGE_COLOR}?style=flat-square) $TEST_BADGE ![Node.js](https://img.shields.io/badge/Node.js-${{ matrix.node-version }}-blue?style=flat-square)" >> coverage_report.md
+        echo "" >> coverage_report.md
+        
+        # Add status indicators
+        if [ -n "$TESTS_PASSED" ] && [ -n "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" = "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" != "0" ]; then
+          echo "### ✅ All Tests Passing!" >> coverage_report.md
+        elif [ -z "$TESTS_PASSED" ] || [ -z "$TESTS_TOTAL" ]; then
+          echo "### ⚠️ Test Results Could Not Be Parsed" >> coverage_report.md
+        else
+          echo "### ❌ Some Tests Failing" >> coverage_report.md
+        fi
+        echo "" >> coverage_report.md
+        
+        echo "### 📊 Detailed Coverage" >> coverage_report.md
+        echo "" >> coverage_report.md
+        echo '```' >> coverage_report.md
+        cat coverage_table.txt >> coverage_report.md
+        echo '```' >> coverage_report.md
+        echo "" >> coverage_report.md
+        
+        # Add threshold status
+        COVERAGE_THRESHOLD=75
+        COVERAGE_INT=${COVERAGE%.*}
+        if [ "$COVERAGE_INT" -lt "$COVERAGE_THRESHOLD" ]; then
+          echo "### ⚠️ Coverage Warning" >> coverage_report.md
+          echo "> **Coverage $COVERAGE% is below the required threshold of $COVERAGE_THRESHOLD%**" >> coverage_report.md
+          echo "" >> coverage_report.md
+        elif [ "$COVERAGE_INT" -lt 85 ]; then
+          echo "### ⚡ Coverage Notice" >> coverage_report.md
+          echo "> Coverage $COVERAGE% is above threshold ($COVERAGE_THRESHOLD%) but could be improved" >> coverage_report.md
+          echo "" >> coverage_report.md
+        fi
+        
+        echo "### 📈 Summary" >> coverage_report.md
+        echo "| Metric | Value | Status |" >> coverage_report.md
+        echo "|--------|-------|--------|" >> coverage_report.md
+        
+        # Ensure test values are not empty
+        if [ -z "$TESTS_PASSED" ] || [ -z "$TESTS_TOTAL" ]; then
+          echo "| **Tests Passed** | Unable to parse | ⚠️ |" >> coverage_report.md
+        else
+          echo "| **Tests Passed** | $TESTS_PASSED/$TESTS_TOTAL | $(if [ "$TESTS_PASSED" = "$TESTS_TOTAL" ] && [ "$TESTS_PASSED" != "0" ]; then echo "✅"; else echo "❌"; fi) |" >> coverage_report.md
+        fi
+        
+        # Coverage status
+        if [ "$COVERAGE_INT" -ge "$COVERAGE_THRESHOLD" ]; then
+          COVERAGE_STATUS="✅"
+        else
+          COVERAGE_STATUS="❌"
+        fi
+        echo "| **Line Coverage** | $COVERAGE% | $COVERAGE_STATUS |" >> coverage_report.md
+        echo "| **Coverage Threshold** | $COVERAGE_THRESHOLD% | Required |" >> coverage_report.md
+        echo "| **Node.js Version** | ${{ matrix.node-version }} | - |" >> coverage_report.md
+        
+        # Add GitHub Actions summary
+        echo "## 🧪 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        cat coverage_report.md >> $GITHUB_STEP_SUMMARY
+        
+    - name: Check coverage threshold
+      run: |
+        COVERAGE_THRESHOLD=75
+        COVERAGE_INT=${COVERAGE%.*}  # Remove decimal part for comparison
+        
+        echo "📊 Coverage Analysis:"
+        echo "  Current Coverage: $COVERAGE%"
+        echo "  Required Threshold: $COVERAGE_THRESHOLD%"
+        echo ""
+        
+        if [ "$COVERAGE_INT" -lt "$COVERAGE_THRESHOLD" ]; then
+          echo "❌ COVERAGE FAILURE: Coverage $COVERAGE% is below required threshold of $COVERAGE_THRESHOLD%"
+          echo ""
+          echo "🔧 To fix this issue:"
+          echo "  1. Add more test cases to increase coverage"
+          echo "  2. Focus on uncovered lines shown in the coverage report"
+          echo "  3. Remove unused code that cannot be covered"
+          echo ""
+          echo "::error title=Coverage Below Threshold::Coverage $COVERAGE% is below required $COVERAGE_THRESHOLD%"
+          exit 1
+        else
+          echo "✅ COVERAGE SUCCESS: Coverage $COVERAGE% meets the required threshold of $COVERAGE_THRESHOLD%"
+        fi
+        
+    - name: Comment PR with coverage
+      if: github.event_name == 'pull_request' && matrix.node-version == '20.x'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read the coverage report
+          const coverageReport = fs.readFileSync('coverage_report.md', 'utf8');
+          
+          // Find existing coverage comment
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('🧪 Test Coverage Report')
+          );
+          
+          const commentBody = `${coverageReport}
+          
+          ---
+          *Coverage report updated for commit ${context.sha.substring(0, 7)} • Generated by GitHub Actions*`;
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-node-${{ matrix.node-version }}
+        path: coverage_output.txt
+        retention-days: 30

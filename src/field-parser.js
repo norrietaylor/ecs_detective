@@ -555,7 +555,6 @@ export class FieldParser {
       // Console and logging
       /^console\./i,
       /^logger\./i,
-      /^log\./i,
       
       // Node.js/JavaScript built-ins
       /^process\./i,

@@ -1,6 +1,13 @@
 import { parse } from 'csv-parse/sync';
 import chalk from 'chalk';
 import { ESClientParser } from './es-client-parser.js';
+import {
+  isValidESFieldName as utilIsValidESFieldName,
+  isCommonAPIPattern as utilIsCommonAPIPattern,
+  isValidExtractedFieldName as utilIsValidExtractedFieldName,
+  isECSFieldKeyFormat as utilIsECSFieldKeyFormat,
+  isValidGeneralFieldName as utilIsValidGeneralFieldName,
+} from './utils/field-utils.js';
 
 export class FieldParser {
   constructor(options = {}) {
@@ -106,7 +113,7 @@ export class FieldParser {
     // Use ES client analysis for ALL JavaScript and TypeScript files
     const esClientFields = this.esClientParser.extractESClientFields(content, filePath);
     esClientFields.forEach(field => {
-      if (this.isValidESFieldName(field)) {
+      if (utilIsValidESFieldName(field)) {
         fields.add(field);
       }
     });
@@ -179,7 +186,7 @@ export class FieldParser {
       let match;
       while ((match = pattern.exec(content)) !== null) {
         const fieldName = match[1];
-        if (this.isValidESFieldName(fieldName) && !this.isCommonAPIPattern(fieldName)) {
+        if (utilIsValidESFieldName(fieldName) && !utilIsCommonAPIPattern(fieldName)) {
           fields.add(fieldName);
         }
       }
@@ -236,17 +243,17 @@ export class FieldParser {
       const fullKey = prefix ? `${prefix}.${key}` : key;
       
       // Only consider keys as ES fields if they have ES-like structure
-      if (this.isValidESFieldName(key)) {
+      if (utilIsValidESFieldName(key)) {
         fields.add(key);
       }
       
       // For nested objects, also check the full path
-      if (prefix && this.isValidESFieldName(fullKey)) {
+      if (prefix && utilIsValidESFieldName(fullKey)) {
         fields.add(fullKey);
       }
 
       // If value is a string that looks like an ES field name, add it
-      if (typeof value === 'string' && this.isValidESFieldName(value)) {
+      if (typeof value === 'string' && utilIsValidESFieldName(value)) {
         fields.add(value);
       }
 
@@ -300,7 +307,7 @@ export class FieldParser {
         this.extractFromMappingDefinition(fieldDef.properties, fields, currentFieldPath);
       } else if (fieldDef && typeof fieldDef === 'object' && fieldDef.type) {
         // This is a leaf field definition with a type - add the field path
-        if (this.isValidESFieldName(currentFieldPath)) {
+        if (utilIsValidESFieldName(currentFieldPath)) {
           fields.add(currentFieldPath);
         }
       } else if (this.isValidESFieldName(currentFieldPath)) {
@@ -315,7 +322,7 @@ export class FieldParser {
       let match;
       while ((match = pattern.exec(content)) !== null) {
         const fieldName = match[1];
-        if (fieldName && this.isValidESFieldName(fieldName)) {
+        if (fieldName && utilIsValidESFieldName(fieldName)) {
           fields.add(fieldName);
         }
       }
@@ -340,276 +347,18 @@ export class FieldParser {
 
   // Separate validation for extracted field names that allows vendor fields
   isValidExtractedFieldName(fieldName) {
-    if (!fieldName || typeof fieldName !== 'string') {
-      return false;
-    }
-
-    // Extended validation for extracted fields - allows vendor fields starting with dots
-    // and special ECS fields starting with @
-    const isValid = /^[@.]?[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
-                   fieldName.length > 1; // Minimum length
-
-    // For extraction purposes, we're particularly interested in dot-notation fields
-    // but we'll also accept simple field names that are longer than 2 characters
-    return isValid && (fieldName.includes('.') || fieldName.length > 2);
+    return utilIsValidExtractedFieldName(fieldName);
   }
 
   isValidESFieldName(fieldName) {
-    // Special case for @timestamp - it's a valid ECS field
-    if (fieldName === '@timestamp') {
-      return true;
-    }
-    
-    if (!this.isValidExtractedFieldName(fieldName)) {
-      return false;
-    }
-
-    // Exclude file extensions and file-like patterns
-    const filePatterns = [
-      /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$/i,  // Image files
-      /\.(css|scss|less|sass)$/i,                 // Style files
-      /\.(html|htm|xml|xhtml)$/i,                 // Markup files
-      /\.(js|ts|jsx|tsx|mjs|cjs)$/i,             // Script files
-      /\.(json|yaml|yml|toml|ini|cfg)$/i,        // Config files
-      /\.(txt|md|rst|log)$/i,                    // Text/doc files
-      /\.(woff|woff2|ttf|eot|otf)$/i,           // Font files
-      /\.(mp4|avi|mov|webm|mp3|wav|ogg)$/i,     // Media files
-      /\.(zip|tar|gz|rar|7z|dmg|iso)$/i,        // Archive files
-      /\.(pdf|doc|docx|xls|xlsx|ppt|pptx)$/i    // Document files
-    ];
-
-    if (filePatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude URL/domain patterns
-    const urlPatterns = [
-      /^https?:\/\//i,                           // HTTP URLs
-      /^ftp:\/\//i,                             // FTP URLs
-      /^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|co|io|ly|me|ai|dev)$/i, // Full domain names (no dots before domain)
-      /^www\./i,                                // www prefixes
-      /github\.com/i,                           // Common domains
-      /elastic\.co/i,
-      /mitre\.org/i,
-      /mozilla\.org/i,
-      /stackoverflow\.com/i,
-      /malpedia\./i                             // Specific domain patterns
-    ];
-
-    if (urlPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude image/asset references
-    const assetPatterns = [
-      /^image\d*\.(png|jpg|jpeg|gif|svg)$/i,    // image1.png, image2.jpg, etc.
-      /^icon\d*\.(png|jpg|jpeg|gif|svg)$/i,     // icon1.png, etc.
-      /^logo\d*\.(png|jpg|jpeg|gif|svg)$/i,     // logo.png, etc.
-      /^background\d*\.(png|jpg|jpeg|gif|svg)$/i, // background.jpg, etc.
-      /^screenshot\d*\.(png|jpg|jpeg|gif|svg)$/i, // screenshot.png, etc.
-      /assets\./i,                              // assets.* references
-      /static\./i                               // static.* references
-    ];
-
-    if (assetPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude common abbreviations and text artifacts
-    const textPatterns = [
-      /^e\.g$/i,                                // "e.g" abbreviation
-      /^i\.e$/i,                                // "i.e" abbreviation
-      /^etc$/i,                                 // "etc" abbreviation
-      /^vs$/i,                                  // "vs" abbreviation
-      /^cmd\.exe$/i,                            // Windows command (bare executable name only)
-      /^powershell\.exe$/i                      // PowerShell executable (bare executable name only)
-    ];
-
-    if (textPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude Windows executables and DLLs (these are process names, not field names)
-    // Note: Only exclude bare executable names, not field paths ending with these extensions
-    const windowsExecutablePatterns = [
-      /^[^.]*\.(exe|dll|bat|msi|scr)$/i,        // Only bare filenames with these extensions (no dots before extension)
-      /^cmd$/i,                                 // Bare 'cmd' without extension
-      /^(rundll32|regsvr32|svchost|explorer|winlogon|csrss|lsass|spoolsv|services|smss|wininit|dwm|taskhost|dllhost|msiexec|setup|install)\.exe$/i,
-      /^(ntdll|kernel32|user32|gdi32|advapi32|ole32|shell32|comctl32|msvcrt|ws2_32)\.dll$/i
-    ];
-
-    if (windowsExecutablePatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude UI/Dashboard configuration patterns (these are Kibana configs, not document fields)
-    const uiConfigPatterns = [
-      /^gridData\./i,                           // Dashboard grid positioning
-      /^embeddableConfig\./i,                   // Dashboard embeddable config
-      /^panelConfig\./i,                        // Panel configuration
-      /^dashboardConfig\./i,                    // Dashboard configuration
-      /^visualizationConfig\./i,                // Visualization configuration
-      /^layoutConfig\./i,                       // Layout configuration
-      /^uiState\./i,                           // UI state data
-      /^appState\./i,                          // Application state
-      /^globalState\./i,                       // Global state
-      /^columns\./i,                           // Table column configuration
-      /^dataProviders\./i,                     // Data provider configuration
-      /^meta\.anything/i,                      // Template/example fields
-      /anything_you_want/i,                    // Example/template content
-      /^ui_/i,                                 // UI-related fields
-      /^example\./i,                           // Example fields
-      /^template\./i                           // Template fields
-    ];
-
-    if (uiConfigPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude hash-like identifiers and GUIDs (these are IDs, not field names)
-    const hashPatterns = [
-      /^[a-f0-9]{32,}$/i,                      // Long hex strings (MD5, SHA, etc.)
-      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, // GUIDs
-      /\.[a-f0-9]{32,}\./i,                    // Embedded long hex strings
-      /^(adHocDataViews|indexPatternRefs)\.[a-f0-9]{32,}/i // Specific Kibana patterns
-    ];
-
-    if (hashPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Exclude VSCode/IDE extension references and domain fragments
-    const idePatterns = [
-      /^[a-z]+\.(markdown|extension|plugin)$/i, // Extension patterns like yzhang.markdown
-      /^vscode\./i,                            // VSCode references
-      /^extensions\./i,                        // Extension references
-      /^settings\./i,                          // IDE settings
-      /^ela\.st$/i,                           // Specific domain fragments
-      /^[a-z]{2,3}\.[a-z]{2,3}$/i            // Simple domain patterns like ela.st
-    ];
-
-    if (idePatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Additional validation for ES fields - exclude common JS/React artifacts
-    const jsArtifacts = [
-      'jest.fn', 'jest.mock', 'jest.Mock', 'jest.clearAllMocks', 'jest.resetAllMocks',
-      'React.memo', 'React.Component', 'React.useState', 'React.useEffect',
-      'i18n.translate', 'console.log', 'console.error', 'console.warn',
-      'window.location', 'document.getElementById', 'Object.keys', 'JSON.stringify',
-      'Array.from', 'String.prototype', 'Number.prototype', 'Math.random',
-      'process.env', 'module.exports', 'require.resolve', 'B.V'
-    ];
-
-    // Exclude known JavaScript artifacts
-    if (jsArtifacts.some(artifact => fieldName.includes(artifact))) {
-      return false;
-    }
-
-    // Exclude fields that are clearly JS/React related
-    const jsPatterns = [
-      /^react\./i,
-      /^jest\./i,
-      /^enzyme\./i,
-      /^lodash\./i,
-      /^moment\./i,
-      /^rxjs\./i,
-      /^angular\./i,
-      /^vue\./i,
-      /\.prototype\./i,
-      /\.constructor\./i,
-      /\.toString\./i,
-      /\.valueOf\./i
-    ];
-
-    if (jsPatterns.some(pattern => pattern.test(fieldName))) {
-      return false;
-    }
-
-    // Require dot notation for most field names (ES fields are typically namespaced)
-    // Exception: allow @timestamp and other known single-word ECS fields
-    const singleWordECSFields = ['@timestamp', 'message', 'tags', 'labels', 'error', 'level'];
-    if (!fieldName.includes('.') && !singleWordECSFields.includes(fieldName)) {
-      return false;
-    }
-
-    return true;
+    return utilIsValidESFieldName(fieldName);
   }
 
   isCommonAPIPattern(fieldName) {
-    if (!fieldName || typeof fieldName !== 'string') {
-      return false;
-    }
-
-    // Common API patterns that should be excluded
-    const apiPatterns = [
-      // Kibana/Express routing patterns
-      /^router\./i,
-      /^app\./i,
-      /^request\./i,
-      /^response\./i,
-      /^res\./i,
-      /^req\./i,
-      
-      // Console and logging
-      /^console\./i,
-      /^logger\./i,
-      
-      // Node.js/JavaScript built-ins
-      /^process\./i,
-      /^module\./i,
-      /^require\./i,
-      /^global\./i,
-      /^window\./i,
-      /^document\./i,
-      
-      // Framework patterns
-      /^React\./i,
-      /^Vue\./i,
-      /^Angular\./i,
-      /^jQuery\./i,
-      /^_\./i,  // Lodash
-      
-      // Common object methods
-      /^Object\./i,
-      /^Array\./i,
-      /^String\./i,
-      /^Number\./i,
-      /^Date\./i,
-      /^Math\./i,
-      /^JSON\./i,
-      
-      // Test frameworks
-      /^jest\./i,
-      /^expect\./i,
-      /^describe\./i,
-      /^it\./i,
-      /^test\./i,
-      
-      // Configuration and options
-      /^config\./i,
-      /^options\./i,
-      /^settings\./i,
-      /^params\./i,
-      
-      // HTTP and networking
-      /^http\./i,
-      /^https\./i,
-      /^fetch\./i,
-      /^axios\./i
-    ];
-
-    return apiPatterns.some(pattern => pattern.test(fieldName));
+    return utilIsCommonAPIPattern(fieldName);
   }
 
   isValidECSFieldName(fieldName) {
-    if (!fieldName || typeof fieldName !== 'string') {
-      return false;
-    }
-
-    // ECS field names should not contain hyphens, only underscores and dots
-    return /^[a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/.test(fieldName) &&
-           fieldName.length > 1;
+    return utilIsECSFieldKeyFormat(fieldName);
   }
 }

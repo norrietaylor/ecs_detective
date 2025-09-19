@@ -16,9 +16,10 @@ export function isCommonAPIPattern(fieldName) {
     /^res\./i,
     /^req\./i,
 
-    // Console (allow ECS log.* namespace)
+    // Console and logging (allow ECS log.* namespace)
     /^console\./i,
     /^logger\./i,
+    /^log\./i,
 
     // Node.js/JavaScript built-ins (allow ECS process.* namespace)
     /^module\./i,
@@ -60,7 +61,15 @@ export function isCommonAPIPattern(fieldName) {
     /^http\./i,
     /^https\./i,
     /^fetch\./i,
-    /^axios\./i
+    /^axios\./i,
+
+    // TypeScript/Zod patterns (specific to issue #12)
+    /^z\./i,
+    /^JSX\./i,
+
+    // Response patterns (specific to issue #12)
+    /^siemResponse\./i,
+    /^error\.statusCode$/i
   ];
 
   return apiPatterns.some(pattern => pattern.test(fieldName));

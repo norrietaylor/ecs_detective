@@ -1,0 +1,90 @@
+name: Branch Protection Check
+
+# This workflow helps verify branch protection is working correctly
+# It should be included as a required status check in branch protection rules
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  branch-protection-status:
+    name: Branch Protection Status
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check branch protection configuration
+      uses: actions/github-script@v7
+      with:
+        script: |
+          try {
+            // Check if branch protection is enabled
+            const { data: branchProtection } = await github.rest.repos.getBranchProtection({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main'
+            });
+
+            console.log('✅ Branch protection is enabled for main branch');
+            console.log('Required status checks:', branchProtection.required_status_checks?.contexts || 'None');
+            console.log('Required reviews:', branchProtection.required_pull_request_reviews?.required_approving_review_count || 0);
+
+            // Check if this workflow is included in required status checks
+            const requiredChecks = branchProtection.required_status_checks?.contexts || [];
+            const thisWorkflowIncluded = requiredChecks.some(check =>
+              check.includes('Branch Protection Status') ||
+              check.includes('branch-protection-status')
+            );
+
+            if (!thisWorkflowIncluded) {
+              console.log('⚠️  This workflow is not included in required status checks');
+              console.log('💡 Add "Branch Protection Status" to required checks for complete protection');
+            }
+
+            // Verify test workflows are required
+            const testChecksRequired = ['test (18.x)', 'test (20.x)', 'test (22.x)'].every(check =>
+              requiredChecks.includes(check)
+            );
+
+            if (testChecksRequired) {
+              console.log('✅ All test workflows are properly required');
+            } else {
+              console.log('⚠️  Not all test workflows are required status checks');
+              console.log('💡 Ensure test (18.x), test (20.x), and test (22.x) are all required');
+            }
+
+          } catch (error) {
+            if (error.status === 404) {
+              console.log('❌ Branch protection is NOT enabled for main branch');
+              console.log('');
+              console.log('🔧 To fix this:');
+              console.log('1. Go to Settings → Branches');
+              console.log('2. Add rule for "main" branch');
+              console.log('3. Enable "Require status checks to pass before merging"');
+              console.log('4. Select required checks: test (18.x), test (20.x), test (22.x)');
+              console.log('5. Enable "Require branches to be up to date before merging"');
+              console.log('');
+              console.error('::error title=Branch Protection Missing::Branch protection is not enabled for the main branch. PRs can be merged without passing CI checks.');
+              process.exit(1);
+            } else {
+              console.error('Error checking branch protection:', error.message);
+              process.exit(1);
+            }
+          }
+
+    - name: Summary
+      run: |
+        echo "## 🛡️ Branch Protection Status" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "This check verifies that branch protection is properly configured to prevent merging PRs when tests fail." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Expected Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Require status checks before merging" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Require branches up to date" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Required checks: test (18.x), test (20.x), test (22.x)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Branch Protection Status (this check)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Need Help?" >> $GITHUB_STEP_SUMMARY
+        echo "See [Branch Protection Guide](.github/BRANCH_PROTECTION.md) for detailed setup instructions." >> $GITHUB_STEP_SUMMARY

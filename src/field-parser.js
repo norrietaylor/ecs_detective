@@ -128,14 +128,16 @@ export class FieldParser {
     // Extract fields from explicit Elasticsearch contexts
     this.extractFromExplicitESContexts(content, fields);
     
-    // Extract ONLY from quoted strings that are likely to be ES field names
-    // Avoid broad property access patterns that catch JS API calls
-    const quotedFieldPatterns = [
-      // Only quoted strings that look like ES field names (require dot notation or @timestamp)
-      /['"'](@timestamp|[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g
+    // Extract field patterns with improved filtering to avoid JS API calls
+    const fieldPatterns = [
+      // Quoted strings (keep original pattern but exclude @timestamp from validation)
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
+      // Property access - but more restrictive to avoid JS API calls
+      // Only match patterns that look like ECS fields (at least one dot, not starting with common API prefixes)
+      /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
     ];
 
-    this.extractWithPatterns(content, fields, quotedFieldPatterns);
+    this.extractWithPatterns(content, fields, fieldPatterns);
   }
 
   extractFromESDocumentInterfaces(content, fields) {

@@ -34,6 +34,7 @@ export function isCommonAPIPattern(fieldName) {
     /^Angular\./i,
     /^jQuery\./i,
     /^_\./i,
+    /^z\./i, // Zod library
 
     // Common object methods
     /^Object\./i,
@@ -61,15 +62,7 @@ export function isCommonAPIPattern(fieldName) {
     /^http\./i,
     /^https\./i,
     /^fetch\./i,
-    /^axios\./i,
-
-    // TypeScript/Zod patterns (specific to issue #12)
-    /^z\./i,
-    /^JSX\./i,
-
-    // Response patterns (specific to issue #12)
-    /^siemResponse\./i,
-    /^error\.statusCode$/i
+    /^axios\./i
   ];
 
   return apiPatterns.some(pattern => pattern.test(fieldName));

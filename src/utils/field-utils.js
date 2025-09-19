@@ -16,9 +16,10 @@ export function isCommonAPIPattern(fieldName) {
     /^res\./i,
     /^req\./i,
 
-    // Console (allow ECS log.* namespace)
+    // Console and logging (allow ECS log.* namespace)
     /^console\./i,
     /^logger\./i,
+    /^log\./i,
 
     // Node.js/JavaScript built-ins (allow ECS process.* namespace)
     /^module\./i,
@@ -33,6 +34,7 @@ export function isCommonAPIPattern(fieldName) {
     /^Angular\./i,
     /^jQuery\./i,
     /^_\./i,
+    /^z\./i, // Zod library
 
     // Common object methods
     /^Object\./i,

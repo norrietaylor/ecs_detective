@@ -3,7 +3,6 @@ import chalk from 'chalk';
 import { ESClientParser } from './es-client-parser.js';
 import {
   isValidESFieldName as utilIsValidESFieldName,
-  isCommonAPIPattern as utilIsCommonAPIPattern,
   isValidExtractedFieldName as utilIsValidExtractedFieldName,
   isECSFieldKeyFormat as utilIsECSFieldKeyFormat,
   isValidGeneralFieldName as utilIsValidGeneralFieldName,
@@ -117,7 +116,7 @@ export class FieldParser {
         fields.add(field);
       }
     });
-    
+
     // For TypeScript files, also extract from ES document interfaces
     const isTypeScript = filePath && (filePath.endsWith('.ts') || filePath.endsWith('.tsx'));
     if (isTypeScript) {
@@ -127,14 +126,14 @@ export class FieldParser {
 
     // Extract fields from explicit Elasticsearch contexts
     this.extractFromExplicitESContexts(content, fields);
-    
-    // Also extract general field patterns (quoted strings and property access)
-    const generalPatterns = [
-      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
-      /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
+
+    // Extract field patterns - ONLY from quoted strings to avoid JS API calls
+    const fieldPatterns = [
+      // Only quoted strings - this eliminates the need for API pattern filtering
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g
     ];
-    
-    this.extractWithPatterns(content, fields, generalPatterns);
+
+    this.extractWithPatterns(content, fields, fieldPatterns);
   }
 
   extractFromESDocumentInterfaces(content, fields) {
@@ -186,7 +185,7 @@ export class FieldParser {
       let match;
       while ((match = pattern.exec(content)) !== null) {
         const fieldName = match[1];
-        if (utilIsValidESFieldName(fieldName) && !utilIsCommonAPIPattern(fieldName)) {
+        if (utilIsValidESFieldName(fieldName)) {
           fields.add(fieldName);
         }
       }
@@ -214,10 +213,9 @@ export class FieldParser {
   }
 
   extractFromText(content, fields) {
-    // General text patterns for field-like strings
+    // General text patterns for field-like strings - only quoted strings
     const patterns = [
-      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g,
-      /\b([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\b/g
+      /['"']([a-zA-Z@][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)['"']/g
     ];
 
     this.extractWithPatterns(content, fields, patterns);
@@ -354,9 +352,6 @@ export class FieldParser {
     return utilIsValidESFieldName(fieldName);
   }
 
-  isCommonAPIPattern(fieldName) {
-    return utilIsCommonAPIPattern(fieldName);
-  }
 
   isValidECSFieldName(fieldName) {
     return utilIsECSFieldKeyFormat(fieldName);

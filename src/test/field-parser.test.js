@@ -45,20 +45,27 @@ describe('FieldParser', () => {
   });
 
   describe('extractFieldsFromContent', () => {
-    test('should extract fields from JavaScript content', () => {
+    test('should extract fields from JavaScript content - quoted only', () => {
       const jsContent = `
         const query = {
           field: 'user.name',
-          value: user.email,
+          value: 'user.email',
           timestamp: '@timestamp'
         };
+        // This should NOT be detected (unquoted property access)
         console.log(process.parent.pid);
+        // This should be detected (quoted field reference)
+        const field = 'process.parent.pid';
       `;
-      
+
       const fields = parser.extractFieldsFromContent(jsContent, 'test.js');
       assert.ok(fields.includes('user.name'));
       assert.ok(fields.includes('user.email'));
+      assert.ok(fields.includes('@timestamp'));
       assert.ok(fields.includes('process.parent.pid'));
+      // Verify that unquoted property access is NOT detected
+      const processParentPidCount = fields.filter(f => f === 'process.parent.pid').length;
+      assert.strictEqual(processParentPidCount, 1, 'Only quoted process.parent.pid should be detected');
     });
 
     test('should extract fields from JSON content', () => {
@@ -76,6 +83,40 @@ describe('FieldParser', () => {
       assert.ok(fields.includes('user.name'));
       assert.ok(fields.includes('event.category'));
       assert.ok(fields.includes('custom.field'));
+    });
+
+    test('should NOT extract JavaScript API calls and internals', () => {
+      const jsContent = `
+        // These should NOT be detected as they are JavaScript API calls
+        router.versioned('/api', handler);
+        logger.error('Something failed');
+        z.infer<MyType>();
+        Array.isArray(value);
+        console.log(message);
+        Object.keys(obj);
+        Math.random();
+
+        // These SHOULD be detected as they are quoted field references
+        const query = { field: 'user.name' };
+        const anotherField = 'event.category';
+        const timestamp = '@timestamp';
+      `;
+
+      const fields = parser.extractFieldsFromContent(jsContent, 'test.js');
+
+      // Should detect quoted field references
+      assert.ok(fields.includes('user.name'));
+      assert.ok(fields.includes('event.category'));
+      assert.ok(fields.includes('@timestamp'));
+
+      // Should NOT detect JavaScript API calls
+      assert.ok(!fields.includes('router.versioned'));
+      assert.ok(!fields.includes('logger.error'));
+      assert.ok(!fields.includes('z.infer'));
+      assert.ok(!fields.includes('Array.isArray'));
+      assert.ok(!fields.includes('console.log'));
+      assert.ok(!fields.includes('Object.keys'));
+      assert.ok(!fields.includes('Math.random'));
     });
 
     test('should handle empty or invalid content gracefully', () => {

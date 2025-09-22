@@ -19,7 +19,6 @@ export function isCommonAPIPattern(fieldName) {
     // Console and logging (allow ECS log.* namespace)
     /^console\./i,
     /^logger\./i,
-    /^log\./i,
 
     // Node.js/JavaScript built-ins (allow ECS process.* namespace)
     /^module\./i,
@@ -34,7 +33,6 @@ export function isCommonAPIPattern(fieldName) {
     /^Angular\./i,
     /^jQuery\./i,
     /^_\./i,
-    /^z\./i, // Zod library
 
     // Common object methods
     /^Object\./i,
@@ -62,7 +60,8 @@ export function isCommonAPIPattern(fieldName) {
     /^http\./i,
     /^https\./i,
     /^fetch\./i,
-    /^axios\./i
+    /^axios\./i,
+    
   ];
 
   return apiPatterns.some(pattern => pattern.test(fieldName));

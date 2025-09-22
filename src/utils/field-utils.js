@@ -70,7 +70,7 @@ export function isCommonAPIPattern(fieldName) {
 /**
  * Basic validation for field-like names without special prefixes.
  */
-export function isValidGeneralFieldName(fieldName) {
+export function isBasicFieldNameFormat(fieldName) {
   if (!fieldName || typeof fieldName !== 'string') {
     return false;
   }
@@ -80,9 +80,9 @@ export function isValidGeneralFieldName(fieldName) {
 }
 
 /**
- * Validation for extracted names that allows leading '.' and '@'.
+ * Validation for extracted names that allows leading '.' and '@' prefixes.
  */
-export function isValidExtractedFieldName(fieldName) {
+export function isValidFieldNameWithPrefixes(fieldName) {
   if (!fieldName || typeof fieldName !== 'string') {
     return false;
   }
@@ -99,7 +99,7 @@ export function isValidESFieldName(fieldName) {
     return true;
   }
 
-  if (!isValidExtractedFieldName(fieldName)) {
+  if (!isValidFieldNameWithPrefixes(fieldName)) {
     return false;
   }
 

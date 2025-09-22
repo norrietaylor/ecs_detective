@@ -308,7 +308,7 @@ export class FieldParser {
         if (utilIsValidESFieldName(currentFieldPath)) {
           fields.add(currentFieldPath);
         }
-      } else if (this.isValidESFieldName(currentFieldPath)) {
+      } else if (utilIsValidESFieldName(currentFieldPath)) {
         // Add the field path even if it doesn't have an explicit type
         fields.add(currentFieldPath);
       }
@@ -348,9 +348,6 @@ export class FieldParser {
     return utilIsValidExtractedFieldName(fieldName);
   }
 
-  isValidESFieldName(fieldName) {
-    return utilIsValidESFieldName(fieldName);
-  }
 
 
   isValidECSFieldName(fieldName) {

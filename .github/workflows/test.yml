@@ -34,6 +34,7 @@ jobs:
       
     - name: Run tests with coverage
       run: |
+        set -o pipefail
         npm run test:coverage | tee coverage_output.txt
         
     - name: Extract coverage data

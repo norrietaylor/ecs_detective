@@ -161,18 +161,21 @@ export class ECSAnalyzer {
     const customFieldsInFile = [];
 
     for (const field of extractedFields) {
-      // First check if field is directly a core ECS field
-      if (this.parser.isECSField(field, coreFields)) {
-        coreFieldsInFile.push(field);
+      // Strip kibana. prefix before classification to consolidate field counting
+      const fieldForClassification = field.startsWith('kibana.') ? field.substring(7) : field;
+
+      // First check if field (without kibana prefix) is directly a core ECS field
+      if (this.parser.isECSField(fieldForClassification, coreFields)) {
+        coreFieldsInFile.push(fieldForClassification);  // Use field without kibana prefix for counting
       } else {
         // Try to normalize the field and check if it maps to a core field
-        const normalizedField = this.normalizeFieldName(field, coreFields);
+        const normalizedField = this.normalizeFieldName(fieldForClassification, coreFields);
         if (normalizedField && coreFields.has(normalizedField)) {
-          coreFieldsInFile.push(field);  // Keep original field name but classify as core
-        } else if (this.isVendorField(field, vendorFields)) {
-          vendorFieldsInFile.push(field);
+          coreFieldsInFile.push(fieldForClassification);  // Use field without kibana prefix for counting
+        } else if (this.isVendorField(fieldForClassification, vendorFields)) {
+          vendorFieldsInFile.push(fieldForClassification);  // Use field without kibana prefix for counting
         } else {
-          customFieldsInFile.push(field);
+          customFieldsInFile.push(fieldForClassification);  // Use field without kibana prefix for counting
         }
       }
     }

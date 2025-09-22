@@ -169,6 +169,9 @@ export class ECSAnalyzer {
         const normalizedField = this.normalizeFieldName(field, coreFields);
         if (normalizedField && coreFields.has(normalizedField)) {
           coreFieldsInFile.push(field);  // Keep original field name but classify as core
+        } else if (field.startsWith('kibana.')) {
+          // All kibana.* fields should be classified as vendor fields
+          vendorFieldsInFile.push(field);
         } else if (this.isVendorField(field, vendorFields)) {
           vendorFieldsInFile.push(field);
         } else {

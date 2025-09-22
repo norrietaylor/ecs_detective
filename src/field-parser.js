@@ -3,9 +3,9 @@ import chalk from 'chalk';
 import { ESClientParser } from './es-client-parser.js';
 import {
   isValidESFieldName as utilIsValidESFieldName,
-  isValidExtractedFieldName as utilIsValidExtractedFieldName,
+  isValidFieldNameWithPrefixes as utilIsValidFieldNameWithPrefixes,
   isECSFieldKeyFormat as utilIsECSFieldKeyFormat,
-  isValidGeneralFieldName as utilIsValidGeneralFieldName,
+  isBasicFieldNameFormat as utilIsBasicFieldNameFormat,
 } from './utils/field-utils.js';
 
 export class FieldParser {
@@ -345,7 +345,7 @@ export class FieldParser {
 
   // Separate validation for extracted field names that allows vendor fields
   isValidExtractedFieldName(fieldName) {
-    return utilIsValidExtractedFieldName(fieldName);
+    return utilIsValidFieldNameWithPrefixes(fieldName);
   }
 
   isValidESFieldName(fieldName) {
